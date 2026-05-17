@@ -46,14 +46,15 @@ def main():
     X_test = test_df[feature_cols]
     y_test = test_df["is_fraud"]
     
-    # Hyperparameters
+    # Hyperparameters - UPDATED FOR CHALLENGER MODEL
     params = {
-        "n_estimators": 100,
-        "max_depth": 10,
+        "n_estimators": 200,      # Increased from 100
+        "max_depth": 15,          # Increased from 10
+        "min_samples_split": 5,   # New constraint
         "random_state": 42
     }
     
-    with mlflow.start_run(run_name="RandomForest_SHAP_Base"):
+    with mlflow.start_run(run_name="RandomForest_Challenger_V2"):
         print("\nTraining Random Forest model...")
         model = RandomForestClassifier(**params)
         model.fit(X_train, y_train)
