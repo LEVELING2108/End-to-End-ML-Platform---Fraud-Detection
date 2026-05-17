@@ -6,30 +6,68 @@ This version adds data validation BEFORE making predictions:
 - Valid inputs are processed and predictions returned
 """
 import pickle
+import numpy as np
+import mlflow
+import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from typing import Dict, List
 from src.data_validation import validate_transaction
 
-# Load model
-print("Loading model...")
-with open("models/model.pkl", "rb") as f:
-    model, encoder = pickle.load(f)
-print("Model loaded successfully!")
+# MLflow Configuration
+MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+MODEL_NAME = "FraudDetectionModel"
+MODEL_ALIAS = "champion"
+
+def load_model_package():
+    """
+    Load the model package from MLflow Registry or local fallback.
+    """
+    # 1. Try loading from MLflow
+    try:
+        print(f"Attempting to load '{MODEL_ALIAS}' model from MLflow Registry...")
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        
+        # Load the specific package artifact from the champion version
+        client = mlflow.tracking.MlflowClient()
+        model_version = client.get_model_version_by_alias(MODEL_NAME, MODEL_ALIAS)
+        run_id = model_version.run_id
+        
+        # Download the custom package artifact
+        artifact_path = "model_package/model_package.pkl"
+        local_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path=artifact_path)
+        
+        with open(local_path, "rb") as f:
+            package = pickle.load(f)
+        print(f"Successfully loaded '{MODEL_NAME}' (v{model_version.version}) from MLflow!")
+        return package["model"], package["encoder"], package["explainer"]
+    
+    except Exception as e:
+        print(f"MLflow load failed: {e}")
+        print("Falling back to local 'models/model.pkl'...")
+        
+        # 2. Local Fallback
+        if os.path.exists("models/model.pkl"):
+            with open("models/model.pkl", "rb") as f:
+                return pickle.load(f)
+        else:
+            raise RuntimeError("No model found in MLflow or local storage!")
+
+# Load model package at startup
+print("Initializing model...")
+model, encoder, explainer = load_model_package()
 
 app = FastAPI(
-    title="Fraud Detection API (Validated)",
+    title="Fraud Detection API (Commercial Grade)",
     description="""
-    Fraud detection API with input validation.
+    Commercial-grade Fraud detection API.
     
-    All inputs are validated before prediction:
-    - amount: Must be positive and below $50,000
-    - hour: Must be 0-23
-    - day_of_week: Must be 0-6
-    - merchant_category: Must be one of: grocery, restaurant, retail, online, travel
-    
-    Invalid inputs return HTTP 400 with detailed error messages.
+    Features:
+    - **MLflow Model Management**: Loads the 'Champion' model from the registry.
+    - **SHAP Explainability**: Provides human-readable reasons for every prediction.
+    - **Data Validation**: Rejects invalid inputs before they reach the model.
     """,
-    version="2.0.0"
+    version="4.0.0"
 )
 
 
@@ -46,29 +84,28 @@ class PredictionResponse(BaseModel):
     validation_passed: bool = True
 
 
+class ExplanationResponse(BaseModel):
+    is_fraud: bool
+    fraud_probability: float
+    base_value: float
+    shap_values: Dict[str, float]
+    top_contributors: List[str]
+    summary: str
+
+
 @app.post("/predict", response_model=PredictionResponse)
 def predict(tx: Transaction):
     """
     Predict whether a transaction is fraudulent.
-    
-    Input is validated before prediction. Invalid inputs return HTTP 400.
     """
     data = tx.dict()
     
-    # VALIDATE INPUT BEFORE MAKING PREDICTION
+    # VALIDATE INPUT
     validation = validate_transaction(data)
-    
     if not validation["valid"]:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": "Validation failed",
-                "errors": validation["errors"],
-                "input": data
-            }
-        )
+        raise HTTPException(status_code=400, detail={"message": "Validation failed", "errors": validation["errors"]})
     
-    # Input is valid - make prediction
+    # Encode and predict
     data["merchant_encoded"] = encoder.transform([data["merchant_category"]])[0]
     X = [[data["amount"], data["hour"], data["day_of_week"], data["merchant_encoded"]]]
     
@@ -77,21 +114,81 @@ def predict(tx: Transaction):
     
     return PredictionResponse(
         is_fraud=bool(pred),
+        fraud_probability=round(float(prob), 4)
+    )
+
+
+@app.post("/explain", response_model=ExplanationResponse)
+def explain(tx: Transaction):
+    """
+    Get SHAP explanation for a prediction.
+    """
+    data = tx.dict()
+    
+    # VALIDATE INPUT
+    validation = validate_transaction(data)
+    if not validation["valid"]:
+        raise HTTPException(status_code=400, detail={"message": "Validation failed", "errors": validation["errors"]})
+    
+    # Prepare features
+    merchant_encoded = encoder.transform([data["merchant_category"]])[0]
+    feature_names = ["amount", "hour", "day_of_week", "merchant_category"]
+    X_explain = np.array([[data["amount"], data["hour"], data["day_of_week"], merchant_encoded]])
+    
+    # Get SHAP values
+    # For TreeExplainer, it returns [samples, features, classes] or [classes][samples, features]
+    shap_values_raw = explainer.shap_values(X_explain)
+    
+    # Random Forest in SHAP usually returns a list of two arrays (one for each class)
+    # We want class 1 (Fraud)
+    if isinstance(shap_values_raw, list):
+        shap_values = shap_values_raw[1][0]
+        base_value = explainer.expected_value[1]
+    else:
+        # Some versions return a single array where the last dim is classes
+        shap_values = shap_values_raw[0, :, 1]
+        base_value = explainer.expected_value[1]
+
+    # Map SHAP values to feature names
+    explanation_map = {
+        "amount": float(shap_values[0]),
+        "hour": float(shap_values[1]),
+        "day_of_week": float(shap_values[2]),
+        "merchant_category": float(shap_values[3])
+    }
+    
+    # Sort contributors
+    sorted_contributors = sorted(explanation_map.items(), key=lambda x: abs(x[1]), reverse=True)
+    top_contributors = [f"{k} ({'+' if v > 0 else ''}{v:.4f})" for k, v in sorted_contributors]
+    
+    # Prediction
+    prob = model.predict_proba(X_explain)[0][1]
+    is_fraud = prob > 0.5
+    
+    # Generate summary
+    top_feat, top_val = sorted_contributors[0]
+    impact = "increasing" if top_val > 0 else "decreasing"
+    summary = f"The {top_feat} was the primary factor {impact} the fraud risk for this transaction."
+
+    return ExplanationResponse(
+        is_fraud=bool(is_fraud),
         fraud_probability=round(float(prob), 4),
-        validation_passed=True
+        base_value=float(base_value),
+        shap_values=explanation_map,
+        top_contributors=top_contributors,
+        summary=summary
     )
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "validation": "enabled"}
+    return {"status": "healthy", "explainability": "enabled"}
 
 
 @app.get("/")
 def root():
     return {
-        "message": "Fraud Detection API (Validated)",
-        "version": "2.0.0",
-        "docs": "/docs",
-        "health": "/health"
+        "message": "Fraud Detection API (Validated + Explainable)",
+        "version": "3.0.0",
+        "endpoints": ["/predict", "/explain", "/docs"]
     }

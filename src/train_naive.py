@@ -10,6 +10,7 @@ We'll improve on this in later sections.
 """
 import pandas as pd
 import pickle
+import shap
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import (
@@ -57,6 +58,11 @@ def main():
     model.fit(X_train, y_train)
     print("Training complete!")
     
+    # Initialize SHAP explainer
+    print("\nInitializing SHAP explainer...")
+    # TreeExplainer is efficient for Random Forests
+    explainer = shap.TreeExplainer(model)
+    
     # Evaluate on test data
     print("\n" + "="*50)
     print("MODEL EVALUATION")
@@ -81,7 +87,7 @@ def main():
     print(classification_report(y_test, y_pred, target_names=['Legitimate', 'Fraud']))
     
     # Feature importance
-    print("\nFeature Importance:")
+    print("\nFeature Importance (MDI):")
     for name, importance in sorted(
         zip(feature_cols, model.feature_importances_),
         key=lambda x: x[1],
@@ -89,12 +95,12 @@ def main():
     ):
         print(f"  {name}: {importance:.4f}")
     
-    # Save the model and encoder together
-    print("\nSaving model to models/model.pkl...")
+    # Save the model, encoder, and explainer together
+    print("\nSaving model package to models/model.pkl...")
     with open("models/model.pkl", "wb") as f:
-        pickle.dump((model, encoder), f)
+        pickle.dump((model, encoder, explainer), f)
     
-    print("\nModel trained and saved successfully!")
+    print("\nModel trained and saved successfully with SHAP explainer!")
     print("\nWARNING: This naive approach has several problems:")
     print("  - No record of hyperparameters or metrics")
     print("  - No model versioning")
