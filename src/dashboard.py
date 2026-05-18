@@ -185,6 +185,10 @@ def generate_pdf_report(tx_data, result, shap_info, metrics, version, flow_img, 
 
 # --- Main App ---
 def main():
+    # Initialize Session State for Audit Log
+    if 'audit_log' not in st.session_state:
+        st.session_state.audit_log = []
+
     st.title("🛡️ FraudShield Management Cockpit")
     st.markdown("---")
 
@@ -237,6 +241,16 @@ def main():
             prob = model.predict_proba(X)[0][1]
             is_fraud = prob > 0.5
             confidence = prob if is_fraud else (1 - prob)
+            
+            # Update Audit Log in Session State
+            st.session_state.audit_log.insert(0, {
+                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Amount": amount,
+                "Category": category,
+                "Decision": "FRAUD" if is_fraud else "LEGIT",
+                "Probability": round(prob, 4),
+                "Investigator": "Manual Check"
+            })
             
             with col2:
                 st.subheader("Analysis Results")
@@ -332,13 +346,14 @@ def main():
         col1.metric("Feature Drift", "Low", delta="0.05", delta_color="inverse")
         col2.metric("Prediction Drift", "None", delta="0.00")
         col3.metric("Data Quality", "99.8%", delta="+0.1%")
-with tab3:
-    st.header("Transaction Audit Trail")
-    if st.session_state.audit_log:
-        audit_df = pd.DataFrame(st.session_state.audit_log)
-        st.dataframe(audit_df, use_container_width=True)
-    else:
-        st.info("No transactions analyzed in this session yet.")
+
+    with tab3:
+        st.header("Transaction Audit Trail")
+        if st.session_state.audit_log:
+            audit_df = pd.DataFrame(st.session_state.audit_log)
+            st.dataframe(audit_df, use_container_width=True)
+        else:
+            st.info("No transactions analyzed in this session yet.")
 
 
 if __name__ == "__main__":
