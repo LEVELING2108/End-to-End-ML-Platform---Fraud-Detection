@@ -303,7 +303,7 @@ def main():
                         
                         tx_payload = {"amount": amount, "hour": hour, "day": day, "category": category}
                         res_payload = {
-                            "decision": "🚨 FRAUD" if is_fraud else "✅ LEGITIMATE",
+                            "decision": "FRAUD" if is_fraud else "LEGITIMATE",
                             "prob": prob,
                             "confidence": confidence
                         }
