@@ -9,6 +9,7 @@ transactions have different patterns than legitimate ones:
 """
 import pandas as pd
 import numpy as np
+import os
 
 
 def generate_transactions(n_samples=10000, fraud_ratio=0.02, seed=42):
@@ -73,6 +74,9 @@ if __name__ == "__main__":
     # Split into train (80%) and test (20%)
     train_df = df.sample(frac=0.8, random_state=42)
     test_df = df.drop(train_df.index)
+    
+    # Create data directory if it doesn't exist
+    os.makedirs("data", exist_ok=True)
     
     # Save to CSV files
     train_df.to_csv("data/train.csv", index=False)

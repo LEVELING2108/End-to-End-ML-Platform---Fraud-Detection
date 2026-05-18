@@ -29,10 +29,10 @@ jobs:
         run: python src/generate_data.py
       
       - name: Train model
-        run: python src/train_naive.py
+        run: python src/train_advanced.py
       
       - name: Run data quality tests
-        run: pytest tests/test_data_and_model.py -v --tb=short
+        run: python -m pytest tests/test_data_and_model.py -v --tb=short
       
       - name: Build Docker image
         run: docker build -t fraud-detection-api .
@@ -44,7 +44,7 @@ jobs:
           curl -f http://localhost:8000/health || exit 1
       
       - name: Run API tests
-        run: pytest tests/test_data_and_model.py -v --tb=short || true
+        run: python -m pytest tests/test_data_and_model.py -v --tb=short || true
       
       - name: Cleanup
         if: always()
