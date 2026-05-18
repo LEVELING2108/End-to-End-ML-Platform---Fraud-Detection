@@ -9,10 +9,24 @@ import pickle
 import numpy as np
 import mlflow
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security, Depends
+from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
 from typing import Dict, List
 from src.data_validation import validate_transaction
+
+# API Security Configuration
+API_KEY_NAME = "X-API-KEY"
+API_KEY = os.getenv("FRAUD_API_KEY", "fraud-detection-secret-key") # Default for demo
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
+
+async def get_api_key(header_key: str = Security(api_key_header)):
+    if header_key == API_KEY:
+        return header_key
+    else:
+        raise HTTPException(
+            status_code=403, detail="Could not validate API Key"
+        )
 
 # MLflow Configuration
 MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
@@ -94,7 +108,7 @@ class ExplanationResponse(BaseModel):
 
 
 @app.post("/predict", response_model=PredictionResponse)
-def predict(tx: Transaction):
+def predict(tx: Transaction, api_key: str = Depends(get_api_key)):
     """
     Predict whether a transaction is fraudulent.
     """
@@ -119,7 +133,7 @@ def predict(tx: Transaction):
 
 
 @app.post("/explain", response_model=ExplanationResponse)
-def explain(tx: Transaction):
+def explain(tx: Transaction, api_key: str = Depends(get_api_key)):
     """
     Get SHAP explanation for a prediction.
     """
