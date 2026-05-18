@@ -58,12 +58,13 @@ def load_model_package():
     
     except Exception as e:
         print(f"MLflow load failed: {e}")
-        print("Falling back to local 'models/model.pkl'...")
+        print("Falling back to local 'models/model_package.pkl'...")
         
         # 2. Local Fallback
-        if os.path.exists("models/model.pkl"):
-            with open("models/model.pkl", "rb") as f:
-                return pickle.load(f)
+        if os.path.exists("models/model_package.pkl"):
+            with open("models/model_package.pkl", "rb") as f:
+                package = pickle.load(f)
+                return package["model"], package["encoder"], package["explainer"]
         else:
             raise RuntimeError("No model found in MLflow or local storage!")
 

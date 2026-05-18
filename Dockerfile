@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ src/
 COPY models/ models/
 COPY data/ data/
+COPY mlruns/ mlruns/
 
 # Copy MLflow database (optional wildcard to prevent build failure if missing)
 COPY mlflow.d[b] .

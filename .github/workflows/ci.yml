@@ -40,8 +40,18 @@ jobs:
       - name: Run container for API tests
         run: |
           docker run -d -p 8000:8000 --name test-api fraud-detection-api
-          sleep 10
-          curl -f http://localhost:8000/health || exit 1
+          echo "Waiting for API to start..."
+          for i in {1..10}; do
+            if curl -f http://localhost:8000/health; then
+              echo "API is up!"
+              exit 0
+            fi
+            echo "Attempt $i: API still starting..."
+            sleep 5
+          done
+          echo "API failed to start in time"
+          docker logs test-api
+          exit 1
       
       - name: Run API tests
         run: python -m pytest tests/test_data_and_model.py -v --tb=short || true
