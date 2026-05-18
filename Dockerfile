@@ -5,8 +5,8 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Prevent Python from writing .pyc files and enable unbuffered logging
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -23,7 +23,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ src/
 COPY models/ models/
 COPY data/ data/
-COPY mlflow.db .
+
+# Copy MLflow database (optional wildcard to prevent build failure if missing)
+COPY mlflow.d[b] .
 
 # Expose ports (8000 for API, 8501 for Dashboard, 5000 for MLflow)
 EXPOSE 8000 8501 5000
