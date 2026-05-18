@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # 1. Prediction API (Production Optimized)
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - FRAUD_API_KEY=fraud-detection-secret-key
+      - MLFLOW_TRACKING_URI=sqlite:///mlflow.db
+    volumes:
+      - .:/app
+    command: gunicorn src.serve_validated:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --timeout 120
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 2. Management Dashboard
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      - MLFLOW_TRACKING_URI=sqlite:///mlflow.db
+    volumes:
+      - .:/app
+    command: streamlit run src/dashboard.py --server.port 8501 --server.address 0.0.0.0
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # 3. MLflow Tracking Server
+  mlflow:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns
