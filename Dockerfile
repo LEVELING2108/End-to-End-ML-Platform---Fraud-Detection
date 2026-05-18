@@ -23,9 +23,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ src/
 COPY models/ models/
 COPY data/ data/
-COPY mlruns/ mlruns/
 
-# Copy MLflow database (optional wildcard to prevent build failure if missing)
+# Copy MLflow artifacts and database (wildcards prevent build failure if directories are empty/missing)
+COPY mlruns* mlruns/
 COPY mlflow.d[b] .
 
 # Expose ports (8000 for API, 8501 for Dashboard, 5000 for MLflow)
