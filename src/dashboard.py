@@ -7,6 +7,11 @@ import mlflow
 from streamlit_shap import st_shap
 import os
 from datetime import datetime
+import streamlit.components.v1 as components
+
+# Import Evidently
+from evidently import Report
+from evidently.presets import DataDriftPreset, DataSummaryPreset
 
 # Page Config
 st.set_page_config(page_title="FraudShield Management Cockpit", layout="wide", page_icon="🛡️")
@@ -42,6 +47,34 @@ def load_champion_model():
     except Exception as e:
         st.error(f"Error loading model from MLflow: {e}")
         return None, None, None, None, None
+
+@st.cache_data
+def get_drift_report():
+    """Generate a live Evidently drift report."""
+    if not os.path.exists('data/train.csv') or not os.path.exists('data/test.csv'):
+        return None
+    
+    reference = pd.read_csv('data/train.csv')
+    current = pd.read_csv('data/test.csv')
+    
+    # Select columns to monitor
+    cols = ['amount', 'hour', 'day_of_week', 'merchant_category']
+    
+    report = Report(metrics=[
+        DataDriftPreset(), 
+        DataSummaryPreset()
+    ])
+    
+    # In newer evidently versions (0.7+), run() returns a Snapshot object.
+    # The export methods (save_html, json, etc.) are moved to the Snapshot object.
+    snapshot = report.run(reference_data=reference[cols], current_data=current[cols])
+    report_path = "monitoring_report.html"
+    snapshot.save_html(report_path)
+    
+    with open(report_path, 'r', encoding='utf-8') as f:
+        html_data = f.read()
+    
+    return html_data
 
 # --- Main App ---
 def main():
@@ -96,14 +129,22 @@ def main():
             # Predict
             prob = model.predict_proba(X)[0][1]
             is_fraud = prob > 0.5
+            confidence = prob if is_fraud else (1 - prob)
             
             with col2:
                 st.subheader("Analysis Results")
                 
+                # Display Metrics in columns
+                m_col1, m_col2 = st.columns(2)
+                
                 if is_fraud:
-                    st.error(f"🚨 FRAUD DETECTED (Probability: {prob:.2%})")
+                    m_col1.error("🚨 FRAUD DETECTED")
+                    m_col2.metric("Fraud Probability", f"{prob:.2%}")
+                    st.warning(f"**Model Confidence:** {confidence:.2%} certain this is Fraud")
                 else:
-                    st.success(f"✅ LEGITIMATE (Probability: {prob:.2%})")
+                    m_col1.success("✅ LEGITIMATE")
+                    m_col2.metric("Fraud Probability", f"{prob:.2%}")
+                    st.info(f"**Model Confidence:** {confidence:.2%} certain this is Legitimate")
                 
                 # SHAP Explanation
                 st.markdown("#### Decision Explanation")
@@ -155,9 +196,16 @@ def main():
     with tab2:
         st.header("Data Drift & Performance Monitoring")
         
-        # Simulate loading drift report
-        st.image("https://evidentlyai.com/static/evidently_report_example.png", caption="Sample Evidently Drift Report", use_container_width=True)
+        # Generate and show live report
+        with st.spinner("Generating Live Drift Report..."):
+            html_data = get_drift_report()
         
+        if html_data:
+            components.html(html_data, height=1000, scrolling=True)
+        else:
+            st.error("Data files not found. Run generate_data.py first.")
+        
+        st.markdown("---")
         col1, col2, col3 = st.columns(3)
         col1.metric("Feature Drift", "Low", delta="0.05", delta_color="inverse")
         col2.metric("Prediction Drift", "None", delta="0.00")
