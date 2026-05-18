@@ -16,6 +16,8 @@ A production-grade, self-healing machine learning platform for **Real-time Credi
 *   **🏆 Model Registry (Champion/Challenger)**: Professional governance using MLflow to manage model versions and aliases. The API automatically serves the "Champion" model.
 *   **🔄 Self-Healing Pipeline**: An autonomous orchestrator that detects data drift and automatically triggers retraining and model promotion.
 *   **📊 Management Cockpit**: A beautiful Streamlit dashboard for fraud investigators to run manual checks, view SHAP visualizations, and monitor system health.
+*   **📄 Professional PDF Reports**: Generate and download comprehensive analysis reports for any transaction, featuring embedded SHAP charts, system flow diagrams, and audit details.
+*   **📜 Dynamic Audit Logs**: Real-time session-based history of all analyzed transactions, providing a traceable path for manual investigations.
 *   **🛡️ Multi-Layer Validation**: Incoming data is strictly validated via Pydantic and Great Expectations before reaching the model.
 *   **⚡ Production Optimized**: Containerized with Gunicorn and multi-worker Uvicorn for high-throughput and low-latency serving (<200ms).
 
