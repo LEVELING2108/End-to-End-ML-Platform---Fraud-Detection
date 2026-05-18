@@ -332,18 +332,14 @@ def main():
         col1.metric("Feature Drift", "Low", delta="0.05", delta_color="inverse")
         col2.metric("Prediction Drift", "None", delta="0.00")
         col3.metric("Data Quality", "99.8%", delta="+0.1%")
+with tab3:
+    st.header("Transaction Audit Trail")
+    if st.session_state.audit_log:
+        audit_df = pd.DataFrame(st.session_state.audit_log)
+        st.dataframe(audit_df, use_container_width=True)
+    else:
+        st.info("No transactions analyzed in this session yet.")
 
-    with tab3:
-        st.header("Transaction Audit Trail")
-        audit_data = pd.DataFrame({
-            "Timestamp": [datetime.now().strftime("%Y-%m-%d %H:%M:%S") for _ in range(5)],
-            "Amount": [120.0, 2500.0, 45.0, 15.0, 890.0],
-            "Category": ["grocery", "online", "restaurant", "retail", "online"],
-            "Decision": ["LEGIT", "FRAUD", "LEGIT", "LEGIT", "FRAUD"],
-            "Probability": [0.02, 0.94, 0.01, 0.05, 0.88],
-            "Investigator": ["System", "Auto-Block", "System", "System", "Auto-Block"]
-        })
-        st.dataframe(audit_data, use_container_width=True)
 
 if __name__ == "__main__":
     main()
