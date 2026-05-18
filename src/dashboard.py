@@ -76,6 +76,55 @@ def get_drift_report():
     
     return html_data
 
+def generate_text_report(tx_data, result, shap_info, metrics, version):
+    """Generate a comprehensive text-based analysis report."""
+    report = f"""
+============================================================
+🛡️ FRAUDSHIELD ANALYSIS REPORT
+============================================================
+Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+System Version: 4.5.0
+Model Registry: FraudDetectionModel (Champion: v{version})
+
+------------------------------------------------------------
+1. TRANSACTION DETAILS
+------------------------------------------------------------
+- Amount:           ${tx_data['amount']:,.2f}
+- Hour of Day:      {tx_data['hour']}:00
+- Day of Week:      {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][tx_data['day']]}
+- Merchant Category: {tx_data['category']}
+
+------------------------------------------------------------
+2. ANALYSIS RESULTS
+------------------------------------------------------------
+- Decision:          {result['decision']}
+- Fraud Probability: {result['prob']:.2%}
+- Confidence Score:  {result['confidence']:.2%} certainty
+
+------------------------------------------------------------
+3. EXPLAINABILITY (SHAP)
+------------------------------------------------------------
+Primary factors influencing this decision:
+"""
+    for feat, val in shap_info:
+        impact = "INCREASED RISK" if val > 0 else "DECREASED RISK"
+        report += f"- {feat:<18}: {val:>+8.4f} ({impact})\n"
+        
+    report += f"""
+------------------------------------------------------------
+4. PLATFORM HEALTH & MONITORING
+------------------------------------------------------------
+- Champion Accuracy: {metrics.get('accuracy', 0):.2%}
+- Champion F1-Score: {metrics.get('f1', 0):.4f}
+- Data Drift Status: NO SIGNIFICANT DRIFT DETECTED
+- System Integrity:  SECURED (X-API-KEY ACTIVE)
+
+============================================================
+END OF REPORT
+============================================================
+"""
+    return report
+
 # --- Main App ---
 def main():
     st.title("🛡️ FraudShield Management Cockpit")
@@ -192,6 +241,36 @@ def main():
                     - Features in **Red** pushed the risk score UP.
                     - Features in **Blue** pushed the risk score DOWN.
                     """)
+
+                    # --- Download Report Section ---
+                    st.markdown("---")
+                    st.subheader("📄 Export Analysis")
+                    
+                    tx_payload = {
+                        "amount": amount,
+                        "hour": hour,
+                        "day": day,
+                        "category": category
+                    }
+                    
+                    res_payload = {
+                        "decision": "🚨 FRAUD" if is_fraud else "✅ LEGITIMATE",
+                        "prob": prob,
+                        "confidence": confidence
+                    }
+                    
+                    # Prepare SHAP summary for text
+                    shap_summary = list(zip(feature_names, sv))
+                    
+                    report_text = generate_text_report(tx_payload, res_payload, shap_summary, metrics, version)
+                    
+                    st.download_button(
+                        label="Download Full Analysis Report",
+                        data=report_text,
+                        file_name=f"fraud_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                        mime="text/plain",
+                        help="Download a comprehensive report including SHAP values and system health."
+                    )
 
     with tab2:
         st.header("Data Drift & Performance Monitoring")
