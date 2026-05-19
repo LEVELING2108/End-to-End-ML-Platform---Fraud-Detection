@@ -10,6 +10,53 @@
 
 A production-grade, self-healing machine learning platform for **Real-time Credit Card Fraud Detection**. This platform integrates the entire ML lifecycle—from experiment tracking and model governance to autonomous retraining and explainable AI.
 
+## 🏗️ System Architecture
+
+```mermaid
+graph TD
+    subgraph "External Layer"
+        User[Investigator / Client]
+    end
+
+    subgraph "Serving Layer (FastAPI + Gunicorn)"
+        API[Secure API Endpoint]
+        Val[Data Validation - Pydantic]
+        API --> Val
+    end
+
+    subgraph "Intelligence Layer"
+        Champion[Champion Model - RF]
+        SHAP[Explainability Engine - SHAP]
+        Val --> Champion
+        Champion --> SHAP
+    end
+
+    subgraph "Governance & Storage"
+        MLflow[MLflow Model Registry]
+        Feast[Feature Store]
+        Champion --- MLflow
+        Champion --- Feast
+    end
+
+    subgraph "Monitoring & Maintenance"
+        Monitor[Drift Monitor - Evidently]
+        Heal[Self-Healing Orchestrator]
+        Monitor --> Heal
+        Heal --> MLflow
+    end
+
+    subgraph "UI Layer"
+        Dash[Streamlit Cockpit]
+        PDF[PDF Report Generator]
+        Dash --> API
+        Dash --> PDF
+    end
+
+    User --> API
+    User --> Dash
+    Monitor --- API
+```
+
 ## 🚀 Key Features
 
 *   **🧠 Explainable AI (SHAP)**: Every prediction comes with a detailed transparency report, showing exactly which features (amount, time, category) influenced the risk score.
