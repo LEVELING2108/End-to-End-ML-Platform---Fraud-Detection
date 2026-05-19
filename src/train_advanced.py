@@ -1,12 +1,10 @@
 """
-Advanced training script with MLflow tracking and Model Registry.
+Advanced training script with Imbalanced Learning (SMOTE).
 
-This version logs:
-- Hyperparameters
-- Performance metrics
-- Model artifacts
-- SHAP explainer
-- Registers the model for production lifecycle management
+This version:
+- Handles 99.8% class imbalance using SMOTE
+- Logs AUPRC (Area Under Precision-Recall Curve) - crucial for fraud
+- Logs full model package to MLflow Model Registry
 """
 import pandas as pd
 import numpy as np
@@ -16,88 +14,77 @@ import mlflow
 import mlflow.sklearn
 from mlflow.models import infer_signature
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import (
-    accuracy_score, 
-    f1_score, 
-    precision_score, 
-    recall_score,
-    confusion_matrix
+    accuracy_score, f1_score, precision_score, recall_score,
+    average_precision_score, confusion_matrix
 )
+from imblearn.over_sampling import SMOTE
 import os
 
-# Set MLflow tracking URI (local sqlite database)
+# Set MLflow tracking
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
-mlflow.set_experiment("Fraud_Detection_System")
+mlflow.set_experiment("FraudShield_Imbalanced_Learning")
 
 def main():
-    print("Loading data...")
+    print("Loading realistic data...")
     train_df = pd.read_csv("data/train.csv")
     test_df = pd.read_csv("data/test.csv")
     
-    # Encode categorical features
-    encoder = LabelEncoder()
-    train_df["merchant_encoded"] = encoder.fit_transform(train_df["merchant_category"])
-    test_df["merchant_encoded"] = encoder.transform(test_df["merchant_category"])
+    X_train = train_df.drop('Class', axis=1)
+    y_train = train_df['Class']
+    X_test = test_df.drop('Class', axis=1)
+    y_test = test_df['Class']
     
-    feature_cols = ["amount", "hour", "day_of_week", "merchant_encoded"]
-    X_train = train_df[feature_cols]
-    y_train = train_df["is_fraud"]
-    X_test = test_df[feature_cols]
-    y_test = test_df["is_fraud"]
+    print(f"Original imbalance: {y_train.value_counts(normalize=True)[1]:.2%} fraud")
     
-    # Hyperparameters - UPDATED FOR CHALLENGER MODEL
+    # 1. Apply SMOTE to handle imbalance
+    print("Applying SMOTE oversampling...")
+    smote = SMOTE(random_state=42)
+    X_train_res, y_train_res = smote.fit_resample(X_train, y_train)
+    print(f"Resampled size: {len(X_train_res):,} samples")
+    
     params = {
-        "n_estimators": 200,      # Increased from 100
-        "max_depth": 15,          # Increased from 10
-        "min_samples_split": 5,   # New constraint
-        "random_state": 42
+        "n_estimators": 100,
+        "max_depth": 10,
+        "random_state": 42,
+        "n_jobs": -1
     }
     
-    with mlflow.start_run(run_name="RandomForest_Challenger_V2"):
-        print("\nTraining Random Forest model...")
+    with mlflow.start_run(run_name="RandomForest_SMOTE"):
+        print("Training Random Forest with Imbalanced Learning...")
         model = RandomForestClassifier(**params)
-        model.fit(X_train, y_train)
+        model.fit(X_train_res, y_train_res)
         
-        # Initialize SHAP explainer
-        explainer = shap.TreeExplainer(model)
-        
-        # Predictions & Metrics
+        # 2. Evaluate (using original test data, NOT resampled)
         y_pred = model.predict(X_test)
+        y_prob = model.predict_proba(X_test)[:, 1]
+        
         metrics = {
             "accuracy": accuracy_score(y_test, y_pred),
             "precision": precision_score(y_test, y_pred),
             "recall": recall_score(y_test, y_pred),
-            "f1": f1_score(y_test, y_pred)
+            "f1": f1_score(y_test, y_pred),
+            "auprc": average_precision_score(y_test, y_prob) # Best metric for fraud
         }
         
-        # Log to MLflow
-        print("Logging to MLflow...")
+        print(f"Metrics: {metrics}")
         mlflow.log_params(params)
         mlflow.log_metrics(metrics)
         
-        # Infer model signature
+        # 3. Explainability
+        print("Initializing SHAP...")
+        explainer = shap.TreeExplainer(model)
+        
+        # 4. Save and Register
         signature = infer_signature(X_test, y_pred)
+        model_info = {"model": model, "encoder": None, "explainer": explainer}
         
-        # Log model and encoder
-        # We save them as a dictionary/package for easy loading
-        model_info = {
-            "model": model,
-            "encoder": encoder,
-            "explainer": explainer
-        }
-        
-        # Save locally first as a temporary artifact
-        if not os.path.exists("models"):
-            os.makedirs("models")
+        if not os.path.exists("models"): os.makedirs("models")
         with open("models/model_package.pkl", "wb") as f:
             pickle.dump(model_info, f)
             
         mlflow.log_artifact("models/model_package.pkl", artifact_path="model_package")
         
-        # Log the sklearn model directly for registry use
-        # Note: This version doesn't include the encoder/explainer in the standard MLflow load
-        # so we'll prefer loading the full package artifact in the API
         mlflow.sklearn.log_model(
             sk_model=model,
             artifact_path="fraud-model",
@@ -105,12 +92,7 @@ def main():
             registered_model_name="FraudDetectionModel"
         )
         
-        print("\n" + "="*50)
-        print("ADVANCED TRAINING COMPLETE")
-        print("="*50)
-        print(f"Metrics: {metrics}")
-        print("Model registered in MLflow as 'FraudDetectionModel'")
-        print("Check MLflow UI (port 5000) for details.")
+        print("\nSUCCESS: Advanced Imbalanced Model trained and registered.")
 
 if __name__ == "__main__":
     main()

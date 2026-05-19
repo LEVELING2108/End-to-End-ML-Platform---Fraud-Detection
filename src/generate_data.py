@@ -1,93 +1,64 @@
 """
-Generate synthetic fraud detection dataset.
+Generate realistic fraud detection dataset mirroring Kaggle structure.
 
-This script creates realistic-looking transaction data where fraudulent
-transactions have different patterns than legitimate ones:
-- Fraud tends to have higher amounts
-- Fraud tends to occur late at night
-- Fraud is more common for online and travel merchants
+This script creates a dataset with:
+- Time (seconds from first transaction)
+- Amount (transaction value)
+- V1-V10 (Simulated PCA-transformed features)
+- Class (0 for Legitimate, 1 for Fraud)
+- Extremely high imbalance (99.8% legitimate)
 """
 import pandas as pd
 import numpy as np
 import os
 
-
-def generate_transactions(n_samples=10000, fraud_ratio=0.02, seed=42):
-    """
-    Generate synthetic fraud detection dataset.
-    
-    Args:
-        n_samples: Total number of transactions to generate
-        fraud_ratio: Proportion of fraudulent transactions (default 2%)
-        seed: Random seed for reproducibility
-    
-    Returns:
-        DataFrame with transaction features and fraud labels
-    
-    Fraud transactions have different patterns:
-    - Higher amounts (mean $245 vs $33 for legit)
-    - Late night hours (0-5, 23)
-    - More likely to be online or travel merchants
-    """
+def generate_kagglestyle_data(n_samples=20000, fraud_ratio=0.002, seed=42):
     np.random.seed(seed)
-    n_fraud = int(n_samples * fraud_ratio)
-    n_legit = n_samples - n_fraud
-
-    # Legitimate transactions: normal shopping patterns
-    legit = pd.DataFrame({
-        "amount": np.random.lognormal(mean=3.5, sigma=1.2, size=n_legit),
-        "hour": np.random.randint(0, 24, size=n_legit),
-        "day_of_week": np.random.randint(0, 7, size=n_legit),
-        "merchant_category": np.random.choice(
-            ["grocery", "restaurant", "retail", "online", "travel"],
-            size=n_legit,
-            p=[0.30, 0.25, 0.25, 0.15, 0.05]
-        ),
-        "is_fraud": 0
-    })
     
-    # Fraudulent transactions: suspicious patterns
-    fraud = pd.DataFrame({
-        "amount": np.random.lognormal(mean=5.5, sigma=1.5, size=n_fraud),
-        "hour": np.random.choice([0, 1, 2, 3, 4, 5, 23], size=n_fraud),
-        "day_of_week": np.random.randint(0, 7, size=n_fraud),
-        "merchant_category": np.random.choice(
-            ["grocery", "restaurant", "retail", "online", "travel"],
-            size=n_fraud,
-            p=[0.05, 0.05, 0.10, 0.60, 0.20]
-        ),
-        "is_fraud": 1
-    })
+    # 1. Generate Time and Amount
+    time = np.sort(np.random.uniform(0, 172800, n_samples)) # 2 days in seconds
+    amount = np.random.exponential(scale=100, size=n_samples)
     
-    # Combine and shuffle
-    df = pd.concat([legit, fraud], ignore_index=True)
-    df = df.sample(frac=1, random_state=seed).reset_index(drop=True)
+    # 2. Generate Class (target)
+    is_fraud = np.random.choice([0, 1], size=n_samples, p=[1-fraud_ratio, fraud_ratio])
     
-    return df
-
-
-if __name__ == "__main__":
-    # Generate dataset
-    print("Generating synthetic fraud detection dataset...")
-    df = generate_transactions(n_samples=10000, fraud_ratio=0.02)
+    # 3. Generate V1-V10 (Simulated PCA features)
+    # Fraudulent transactions will have different mean/std for these features
+    v_features = {}
+    for i in range(1, 11):
+        # Legitimate: centered around 0
+        legit_v = np.random.normal(loc=0, scale=1.0, size=n_samples)
+        # Fraud: shifted and higher variance
+        fraud_shift = np.random.uniform(-3, 3)
+        fraud_v = np.random.normal(loc=fraud_shift, scale=2.0, size=n_samples)
+        
+        v_features[f'V{i}'] = np.where(is_fraud == 1, fraud_v, legit_v)
+        
+    # Combine into DataFrame
+    df = pd.DataFrame(v_features)
+    df['Time'] = time
+    df['Amount'] = amount
+    df['Class'] = is_fraud
     
-    # Split into train (80%) and test (20%)
+    # Add some noise to Amount for fraud
+    df.loc[df['Class'] == 1, 'Amount'] = df.loc[df['Class'] == 1, 'Amount'] * np.random.uniform(2, 10, size=sum(is_fraud))
+    
+    # Reorder columns
+    cols = ['Time'] + [f'V{i}' for i in range(1, 11)] + ['Amount', 'Class']
+    df = df[cols]
+    
+    # Split into train/test
     train_df = df.sample(frac=0.8, random_state=42)
     test_df = df.drop(train_df.index)
     
-    # Create data directory if it doesn't exist
     os.makedirs("data", exist_ok=True)
-    
-    # Save to CSV files
     train_df.to_csv("data/train.csv", index=False)
     test_df.to_csv("data/test.csv", index=False)
     
-    # Print summary statistics
-    print(f"\nDataset generated successfully!")
-    print(f"Training set: {len(train_df):,} transactions")
-    print(f"Test set: {len(test_df):,} transactions")
-    print(f"Overall fraud ratio: {df['is_fraud'].mean():.2%}")
-    print(f"\nLegitimate transactions - Average amount: ${df[df['is_fraud']==0]['amount'].mean():.2f}")
-    print(f"Fraudulent transactions - Average amount: ${df[df['is_fraud']==1]['amount'].mean():.2f}")
-    print(f"\nMerchant category distribution (fraud):")
-    print(df[df['is_fraud']==1]['merchant_category'].value_counts(normalize=True))
+    print(f"Realistic dataset generated successfully!")
+    print(f"Total samples: {n_samples:,}")
+    print(f"Fraud count: {sum(is_fraud)} ({fraud_ratio:.2%})")
+    print(f"Feature set: Time, Amount, V1-V10")
+
+if __name__ == "__main__":
+    generate_kagglestyle_data()
