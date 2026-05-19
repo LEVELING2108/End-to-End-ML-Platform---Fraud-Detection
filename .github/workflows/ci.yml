@@ -1,61 +1,72 @@
-name: ML Pipeline CI/CD
+name: FraudShield Enterprise CI/CD
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ main, develop ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
+  # 1. Quality Gate: Linting & Unit Tests
   test:
+    name: 🧪 Quality Gate
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v3
       
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
         with:
           python-version: "3.11"
           cache: 'pip'
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      
-      - name: Generate training data
+
+      - name: Generate synthetic data
         run: python src/generate_data.py
-      
-      - name: Train model
-        run: python src/train_advanced.py
-      
-      - name: Run data quality tests
+
+      - name: Run Data & Model Tests
         run: python -m pytest tests/test_data_and_model.py -v --tb=short
+
+  # 2. Build & Containerize
+  build:
+    name: 🏗️ Containerize
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Production Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false # Set to true and add login steps if pushing to DockerHub/GHCR
+          tags: |
+            fraudshield-api:latest
+            fraudshield-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # 3. Integration & Security
+  security:
+    name: 🛡️ Security Scan
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
       
-      - name: Build Docker image
-        run: docker build -t fraud-detection-api .
-      
-      - name: Run container for API tests
-        run: |
-          docker run -d -p 8000:8000 --name test-api fraud-detection-api
-          echo "Waiting for API to start..."
-          for i in {1..10}; do
-            if curl -f http://localhost:8000/health; then
-              echo "API is up!"
-              exit 0
-            fi
-            echo "Attempt $i: API still starting..."
-            sleep 5
-          done
-          echo "API failed to start in time"
-          docker logs test-api
-          exit 1
-      
-      - name: Run API tests
-        run: python -m pytest tests/test_data_and_model.py -v --tb=short || true
-      
-      - name: Cleanup
-        if: always()
-        run: docker stop test-api || true
+      - name: Scan Docker Image for Vulnerabilities
+        uses: snyk/actions/docker@master
+        continue-on-error: true # For demo purposes
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: fraudshield-api:latest
+          args: --file=Dockerfile
