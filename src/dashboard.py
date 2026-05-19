@@ -11,6 +11,7 @@ import streamlit.components.v1 as components
 import matplotlib.pyplot as plt
 from fpdf import FPDF
 import io
+from src.database import log_prediction, SessionLocal, AuditLog
 
 # Import Evidently
 from evidently import Report
@@ -129,12 +130,14 @@ def main():
             is_fraud = prob > 0.5
             confidence = prob if is_fraud else (1 - prob)
             
-            st.session_state.audit_log.insert(0, {
-                "Time": datetime.now().strftime("%H:%M:%S"),
-                "Amount": amount,
-                "Decision": "FRAUD" if is_fraud else "LEGIT",
-                "Prob": round(prob, 4)
-            })
+            # Log to Database (New!)
+            log_prediction(
+                amount=amount,
+                decision="FRAUD" if is_fraud else "LEGIT",
+                prob=round(float(prob), 4),
+                confidence=round(float(confidence), 4),
+                investigator="Dashboard User"
+            )
             
             with col2:
                 st.subheader("Results")
@@ -159,8 +162,22 @@ def main():
         if html: components.html(html, height=800, scrolling=True)
 
     with tab3:
-        st.header("Session Audit")
-        if st.session_state.audit_log: st.dataframe(pd.DataFrame(st.session_state.audit_log), use_container_width=True)
+        st.header("Persistent Audit Trail")
+        db = SessionLocal()
+        logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(100).all()
+        db.close()
+        
+        if logs:
+            audit_df = pd.DataFrame([{
+                "Time (UTC)": l.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                "Amount": f"${l.amount:,.2f}",
+                "Decision": l.decision,
+                "Confidence": f"{l.confidence:.2%}",
+                "Investigator": l.investigator
+            } for l in logs])
+            st.dataframe(audit_df, use_container_width=True)
+        else:
+            st.info("No logs found in the database.")
 
 if __name__ == "__main__":
     main()

@@ -16,10 +16,11 @@ from mlflow.tracking import MlflowClient
 
 # Configuration
 REFERENCE_DATA = "data/train.csv"
-PRODUCTION_DATA = "data/test.csv"  # In real life, this would be new live data
-DRIFT_THRESHOLD = 0.20 # 20% of features drifted triggers retraining
+PRODUCTION_DATA = "data/test.csv"
+DRIFT_THRESHOLD = 0.20
 MODEL_NAME = "FraudDetectionModel"
 ALIAS_CHAMPION = "champion"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./audit_logs.db")
 
 def run_command(command, description):
     """Utility to run shell commands and log output."""

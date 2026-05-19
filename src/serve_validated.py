@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
 from typing import Dict, List
+from src.database import log_prediction
 
 # API Security Configuration
 API_KEY_NAME = "X-API-KEY"
@@ -85,6 +86,16 @@ def predict(tx: Transaction, api_key: str = Depends(get_api_key)):
     X = [list(data.values())]
     pred = model.predict(X)[0]
     prob = model.predict_proba(X)[0][1]
+    
+    # Log to Database
+    log_prediction(
+        amount=data["Amount"],
+        decision="FRAUD" if pred else "LEGIT",
+        prob=round(float(prob), 4),
+        confidence=round(float(prob if pred else 1-prob), 4),
+        investigator="API Client"
+    )
+    
     return PredictionResponse(is_fraud=bool(pred), fraud_probability=round(float(prob), 4))
 
 @app.post("/explain", response_model=ExplanationResponse)
