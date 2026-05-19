@@ -21,10 +21,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY src/ src/
-COPY models/ models/
-COPY data/ data/
 
-# Copy MLflow artifacts and database (wildcards prevent build failure if directories are empty/missing)
+# Copy artifacts (wildcards prevent build failure if directories are empty/missing in CI/CD)
+COPY models* models/
+COPY data* data/
 COPY mlruns* mlruns/
 COPY mlflow.d[b] .
 
