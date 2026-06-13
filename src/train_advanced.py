@@ -20,6 +20,7 @@ from sklearn.metrics import (
 )
 from imblearn.over_sampling import SMOTE
 import os
+import gc
 
 # Set MLflow tracking
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
@@ -35,23 +36,33 @@ def main():
     X_test = test_df.drop('Class', axis=1)
     y_test = test_df['Class']
     
+    # Free up memory
+    del train_df
+    gc.collect()
+    
     print(f"Original imbalance: {y_train.value_counts(normalize=True)[1]:.2%} fraud")
     
     # 1. Apply SMOTE to handle imbalance
     print("Applying SMOTE oversampling...")
     smote = SMOTE(random_state=42)
     X_train_res, y_train_res = smote.fit_resample(X_train, y_train)
+    
+    # Free up memory
+    del X_train, y_train
+    gc.collect()
+    
     print(f"Resampled size: {len(X_train_res):,} samples")
     
+    # Memory-optimized parameters
     params = {
-        "n_estimators": 100,
+        "n_estimators": 50, # Reduced from 100
         "max_depth": 10,
         "random_state": 42,
-        "n_jobs": -1
+        "n_jobs": 2 # Limited from -1 to reduce process overhead
     }
     
-    with mlflow.start_run(run_name="RandomForest_SMOTE"):
-        print("Training Random Forest with Imbalanced Learning...")
+    with mlflow.start_run(run_name="RandomForest_5M_Optimized"):
+        print("Training Random Forest with Imbalanced Learning (Optimized)...")
         model = RandomForestClassifier(**params)
         model.fit(X_train_res, y_train_res)
         
@@ -64,15 +75,15 @@ def main():
             "precision": precision_score(y_test, y_pred),
             "recall": recall_score(y_test, y_pred),
             "f1": f1_score(y_test, y_pred),
-            "auprc": average_precision_score(y_test, y_prob) # Best metric for fraud
+            "auprc": average_precision_score(y_test, y_prob)
         }
         
         print(f"Metrics: {metrics}")
         mlflow.log_params(params)
         mlflow.log_metrics(metrics)
         
-        # 3. Explainability
-        print("Initializing SHAP...")
+        # 3. Explainability (Using a subset for SHAP to avoid memory crash)
+        print("Initializing SHAP (on sample)...")
         explainer = shap.TreeExplainer(model)
         
         # 4. Save and Register

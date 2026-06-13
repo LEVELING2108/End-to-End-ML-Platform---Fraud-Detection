@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 import os
 
-def generate_kagglestyle_data(n_samples=20000, fraud_ratio=0.002, seed=42):
+def generate_kagglestyle_data(n_samples=5000000, fraud_ratio=0.002, seed=42):
     np.random.seed(seed)
     
     # 1. Generate Time and Amount
